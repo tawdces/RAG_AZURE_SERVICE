@@ -1,0 +1,4 @@
+This folder is used for storing PDF files.
+
+Supported format: .pdf (case-insensitive)
+Usage: Put your PDF knowledge base documents here before running 'python ingest_all.py' to process and upload them to Azure AI Search.

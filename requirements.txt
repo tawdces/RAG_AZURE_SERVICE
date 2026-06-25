@@ -1,8 +1,12 @@
 fastapi
 uvicorn
 python-dotenv
+
 azure-search-documents
 azure-storage-blob
+
+httpx
+
 pytest
 pytest-cov
 pytest-asyncio

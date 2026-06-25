@@ -3,3 +3,6 @@ uvicorn
 python-dotenv
 azure-search-documents
 azure-storage-blob
+pytest
+pytest-cov
+pytest-asyncio

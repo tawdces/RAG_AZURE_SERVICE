@@ -1,4 +1,7 @@
-__pycache__/
-
-*.pdf
 .env
+.git
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+data/pdf/*.pdf

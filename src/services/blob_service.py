@@ -1,8 +1,8 @@
 from pathlib import Path
 from azure.storage.blob import BlobServiceClient
+from azure.core.exceptions import ResourceExistsError
 
 import sys
-
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from config import (
@@ -20,17 +20,23 @@ def get_container_client():
     return blob_service_client.get_container_client(AZURE_STORAGE_CONTAINER_NAME)
 
 
-def upload_pdf_files() -> list[str]:
+def upload_pdf_files() -> dict:
     container_client = get_container_client()
     uploaded = []
 
     for pdf_file in PDF_FOLDER.glob("*.pdf"):
-        with open(pdf_file, "rb") as data:
-            container_client.upload_blob(
-                name=pdf_file.name,
-                data=data,
-                overwrite=True,
-            )
-        uploaded.append(pdf_file.name)
+        try:
+            with open(pdf_file, "rb") as data:
+                container_client.upload_blob(
+                    name=pdf_file.name,
+                    data=data,
+                    overwrite=False,
+                )
+            uploaded.append(pdf_file.name)
+        except ResourceExistsError:
+            pass
 
-    return uploaded
+    return {
+        "uploaded": uploaded,
+        "total": len(uploaded),
+    }

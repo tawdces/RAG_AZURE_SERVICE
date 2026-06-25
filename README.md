@@ -23,52 +23,20 @@ rag_azure_service/
 │   │   └── routes/
 │   │       ├── knowledge.py
 │   │       ├── search.py
-│   │       └── blob.py
+│   │       ├── blob.py
+│   │       └── indexer.py
 │   │
 │   └── services/
 │       ├── knowledge_service.py
 │       ├── search_service.py
-│       └── blob_service.py
+│       ├── blob_service.py
+│       └── indexer_service.py
 │
 └── test/
     ├── test_index.py
     ├── test_knowledge.py
     ├── test_search.py
     └── test_blob.py
-```
-
----
-
-## Architecture
-
-```
-flowchart TD
-    subgraph Client
-        PDF["PDF Files (data/pdf/)"]
-        API["REST API (FastAPI)"]
-    end
-
-    subgraph AzureStorage
-        Container["Blob Container"]
-    end
-
-    subgraph AzureAISearch
-        Indexer["Indexer"]
-        Skillset["Skillset\n#1 Document Intelligence\n#2 Split Skill\n#3 Embedding Skill"]
-        Index["Search Index\n(chunk, title, text_vector, headers)"]
-        KB["Knowledge Base\n(answerSynthesis)"]
-    end
-
-    subgraph AzureOpenAI
-        Embedding["text-embedding-3-small"]
-    end
-
-    PDF -->|"POST /blob/upload"| Container
-    Container --> Indexer --> Skillset --> Index
-    Skillset --> Embedding --> Skillset
-    API -->|"POST /search/query"| Index
-    API -->|"POST /knowledge/ask"| KB
-    KB --> Index
 ```
 
 ---
@@ -108,6 +76,7 @@ AZURE_STORAGE_CONNECTION_STRING=
 
 AZURE_SEARCH_ENDPOINT=
 AZURE_SEARCH_INDEX_NAME=
+AZURE_SEARCH_INDEXER_NAME=
 AZURE_SEARCH_API_KEY=
 
 KNOWLEDGE_BASE_NAME=
@@ -129,9 +98,11 @@ python main.py
 ## API Endpoints
 
 ### Health Check
+
 ```
 GET /health
 ```
+
 ```json
 { "status": "ok" }
 ```
@@ -139,16 +110,21 @@ GET /health
 ---
 
 ### Knowledge Base — Answer Synthesis
+
 ```
 POST /knowledge/ask
 ```
+
 Request
+
 ```json
 {
   "query": "คำถามของคุณ"
 }
 ```
+
 Response
+
 ```json
 {
   "query": "คำถามของคุณ",
@@ -159,17 +135,22 @@ Response
 ---
 
 ### Search — Keyword Search
+
 ```
 POST /search/query
 ```
+
 Request
+
 ```json
 {
   "query": "คำค้นหา",
   "top": 5
 }
 ```
+
 Response
+
 ```json
 {
   "query": "คำค้นหา",
@@ -186,17 +167,71 @@ Response
 ---
 
 ### Blob Storage — Upload PDF
+
 ```
 POST /blob/upload
 ```
+
 Response
+
 ```json
 {
   "uploaded": ["file1.pdf", "file2.pdf"],
   "total": 2
 }
 ```
+
 > วาง PDF ไว้ใน `data/pdf/` ก่อนเรียก endpoint นี้
+> ไฟล์ที่มีอยู่แล้วใน Blob จะถูกข้ามโดยอัตโนมัติ
+
+---
+
+### Indexer — Trigger & Status
+
+```
+POST /indexer/run
+```
+
+Response
+
+```json
+{
+  "triggered": true,
+  "message": "Indexer 'jame-rag-indexer' started successfully",
+  "status": "running"
+}
+```
+
+```
+GET /indexer/status
+```
+
+Response
+
+```json
+{
+  "indexer": "jame-rag-indexer",
+  "status": "success",
+  "start_time": "2025-01-01T10:00:00",
+  "end_time": "2025-01-01T10:05:00",
+  "items_processed": 3,
+  "items_failed": 0,
+  "errors": []
+}
+```
+
+---
+
+## Upload Flow
+
+วาง PDF ใหม่ใน `data/pdf/` แล้วเรียก API ตามลำดับ
+
+```
+1. POST /blob/upload        → อัพโหลด PDF ไปยัง Blob Storage
+2. POST /indexer/run        → trigger indexer ให้ประมวลผล file ใหม่
+3. GET  /indexer/status     → poll จนกว่า status = "success"
+4. POST /knowledge/ask      → query ได้เลย
+```
 
 ---
 
@@ -222,8 +257,8 @@ python test/test_blob.py
 
 ## Azure Skillset Pipeline
 
-| ขั้นตอน | Skill | หน้าที่ |
-|---|---|---|
-| 1 | Document Intelligence Layout Skill | แปลง PDF → Markdown |
-| 2 | Split Skill | ตัดเป็น chunks (2000 chars, 500 overlap) |
-| 3 | Azure OpenAI Embedding Skill | สร้าง vector 1536 มิติ |
+| ขั้นตอน | Skill                              | หน้าที่                                  |
+| ------- | ---------------------------------- | ---------------------------------------- |
+| 1       | Document Intelligence Layout Skill | แปลง PDF → Markdown                      |
+| 2       | Split Skill                        | ตัดเป็น chunks (2000 chars, 500 overlap) |
+| 3       | Azure OpenAI Embedding Skill       | สร้าง vector 1536 มิติ                   |

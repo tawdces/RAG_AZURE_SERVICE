@@ -44,6 +44,21 @@ jobs:
     - name: Run tests with pytest
       env:
         PYTHONPATH: .
+
+        PROJECT_ENDPOINT: ${{ secrets.PROJECT_ENDPOINT }}
+        PROJECT_API_KEY: ${{ secrets.PROJECT_API_KEY }}
+
+        AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
+        AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+
+        AZURE_SEARCH_ENDPOINT: ${{ secrets.AZURE_SEARCH_ENDPOINT }}
+        AZURE_SEARCH_INDEX_NAME: ${{ secrets.AZURE_SEARCH_INDEX_NAME }}
+        AZURE_SEARCH_INDEXER_NAME: ${{ secrets.AZURE_SEARCH_INDEXER_NAME }}
+        AZURE_SEARCH_API_KEY: ${{ secrets.AZURE_SEARCH_API_KEY }}
+
+        KNOWLEDGE_BASE_NAME: ${{ secrets.KNOWLEDGE_BASE_NAME }}
+        KNOWLEDGE_SOURCE_NAME: ${{ secrets.KNOWLEDGE_SOURCE_NAME }}
+
       run: |
         pytest tests/ -v --cov=src --cov-report=xml --cov-report=term
 

@@ -29,6 +29,19 @@ jobs:
         pip install -r requirements.txt
         pip install pytest pytest-cov pytest-asyncio
 
+    - name: Show installed packages
+      run: |
+        python --version
+        python -m pip show azure-search-documents
+        python -m pip freeze
+        python - <<'EOF'
+        from azure.search.documents.knowledgebases.models import KnowledgeBaseRetrievalRequest
+        import inspect
+
+        print("KnowledgeBaseRetrievalRequest signature:")
+        print(inspect.signature(KnowledgeBaseRetrievalRequest))
+        EOF
+
     - name: Lint with pylint
       run: |
         pip install pylint
@@ -68,7 +81,6 @@ jobs:
         file: ./coverage.xml
         fail_ci_if_error: false
         verbose: true
-
 
   security:
     runs-on: ubuntu-latest

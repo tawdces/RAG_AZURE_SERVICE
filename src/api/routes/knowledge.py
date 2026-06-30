@@ -24,6 +24,9 @@ def ask(body: QueryRequest):
     if not body.query.strip():
         raise HTTPException(status_code=400, detail="Query must not be empty")
 
-    answer = retrieve_answer(body.query)
+    result = retrieve_answer(body.query)
 
-    return QueryResponse(query=body.query, answer=answer)
+    return QueryResponse(
+        query=body.query,
+        answer=result.get("answer", ""),
+    )

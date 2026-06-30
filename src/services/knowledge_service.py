@@ -1,3 +1,4 @@
+import json
 import re
 from typing import cast, Any
 from azure.search.documents.knowledgebases import KnowledgeBaseRetrievalClient
@@ -20,6 +21,9 @@ from config import (
     KNOWLEDGE_BASE_NAME,
     KNOWLEDGE_SOURCE_NAME,
 )
+
+# Set to True to print subquery/activity debug info to stdout
+DEBUG_PRINT_SUBQUERIES = True
 
 
 def get_kb_client() -> KnowledgeBaseRetrievalClient:
@@ -77,15 +81,85 @@ def _format_reference_block(sources: list[dict]) -> str:
     if not sources:
         return ""
 
-    lines = ["", "", "อ้างอิง:"]
-    for s in sources:
+    lines = ["", "อ้างอิง:"]
+    for i, s in enumerate(sources, 1):
         file_name = s.get("file") or "ไม่ทราบไฟล์"
         page = s.get("page")
+        page_str = f"หน้า {page}" if page is not None else "หน้า -"
         score = s.get("reranker_score")
-        score_str = f"{score:.4f}" if isinstance(score, (int, float)) else "N/A"
-        lines.append(f"[file: {file_name}, page: {page}, rerank_score: {score_str}]")
+        score_str = f"{score:.2f}" if isinstance(score, (int, float)) else "N/A"
+        lines.append(f"  {i}. {file_name} ({page_str}) · score {score_str}")
 
     return "\n".join(lines)
+
+
+def _to_dict(obj: Any) -> Any:
+    """Best-effort conversion of SDK model objects to plain dict/list for printing."""
+    if hasattr(obj, "as_dict"):
+        return obj.as_dict()
+    if hasattr(obj, "__dict__"):
+        return {k: _to_dict(v) for k, v in vars(obj).items() if not k.startswith("_")}
+    if isinstance(obj, list):
+        return [_to_dict(i) for i in obj]
+    return obj
+
+
+def _dump_raw_result(result: Any) -> None:
+    """Dump the entire result object structure - use this first to discover real field names."""
+    print("\n========== RAW RESULT DUMP ==========")
+    try:
+        print(json.dumps(_to_dict(result), indent=2, ensure_ascii=False, default=str))
+    except Exception as e:
+        print(f"(failed to json-serialize, falling back to repr) {e}")
+        print(repr(_to_dict(result)))
+    print("======================================\n")
+
+
+def _print_subqueries(result: Any) -> None:
+    """
+    Print a clean, condensed view of the query plan: subqueries actually
+    sent to the search index, plus a one-line cost/timing summary for the
+    planning and synthesis model calls.
+    """
+    activities = getattr(result, "activity", None) or []
+    if not activities:
+        print("(no activity found - try _dump_raw_result(result))")
+        return
+
+    subqueries: list[str] = []
+    planning = None
+    synthesis = None
+    reasoning_tokens = None
+
+    for act in activities:
+        a = _to_dict(act)
+        t = a.get("type")
+
+        if t == "searchIndex":
+            search_text = (a.get("searchIndexArguments") or {}).get("search")
+            if search_text:
+                subqueries.append(f"{search_text}  ({a.get('count', '?')} results)")
+        elif t == "modelQueryPlanning":
+            planning = a
+        elif t == "modelAnswerSynthesis":
+            synthesis = a
+        elif t == "agenticReasoning":
+            reasoning_tokens = a.get("reasoningTokens")
+
+    print("\n=== Subqueries sent to search index ===")
+    for i, sq in enumerate(subqueries, 1):
+        print(f"  {i}. {sq}")
+
+    print("\n=== Model cost summary ===")
+    if planning:
+        print(f"  Planning : {planning.get('inputTokens')} in / {planning.get('outputTokens')} out "
+              f"tokens, {planning.get('elapsedMs')}ms ({planning.get('modelName')})")
+    if synthesis:
+        print(f"  Synthesis: {synthesis.get('inputTokens')} in / {synthesis.get('outputTokens')} out "
+              f"tokens, {synthesis.get('elapsedMs')}ms ({synthesis.get('modelName')})")
+    if reasoning_tokens is not None:
+        print(f"  Reasoning: {reasoning_tokens} tokens")
+    print("========================================\n")
 
 
 def retrieve_answer(query: str) -> dict:
@@ -107,6 +181,9 @@ def retrieve_answer(query: str) -> dict:
     )
 
     result = client.retrieve(retrieval_request=request)
+
+    if DEBUG_PRINT_SUBQUERIES:
+        _print_subqueries(result)
 
     content = cast(
         KnowledgeBaseMessageTextContent,

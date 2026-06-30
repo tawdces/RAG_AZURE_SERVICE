@@ -16,12 +16,12 @@ def run():
         if not query.strip():
             continue
 
-        answer = retrieve_answer(query)
+        result = retrieve_answer(query)
 
         print("\n====================")
         print("Answer")
         print("====================")
-        print(answer)
+        print(result["answer"])
 
 
 if __name__ == "__main__":

@@ -61,6 +61,7 @@ def get_indexer_status() -> dict:
         raise ValueError(f"Indexer '{AZURE_SEARCH_INDEXER_NAME}' not found")
 
     last = status.last_result
+    errors = [e.error_message for e in (last.errors or [])][:5] if last else []
 
     return {
         "indexer": AZURE_SEARCH_INDEXER_NAME,
@@ -69,5 +70,5 @@ def get_indexer_status() -> dict:
         "end_time": last.end_time.isoformat() if last and last.end_time else None,
         "items_processed": last.item_count if last else 0,
         "items_failed": last.failed_item_count if last else 0,
-        "errors": [e.error_message for e in (last.errors or [])][:5],
+        "errors": errors,
     }

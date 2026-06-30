@@ -1,5 +1,6 @@
 import pytest
 
+
 class TestHealthEndpoint:
 
     def test_health_check(self, client):

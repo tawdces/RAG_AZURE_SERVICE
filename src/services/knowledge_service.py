@@ -1,5 +1,7 @@
 import json
+import logging
 import re
+import time
 from typing import cast, Any
 from azure.search.documents.knowledgebases import KnowledgeBaseRetrievalClient
 from azure.search.documents.knowledgebases.models import (
@@ -24,6 +26,8 @@ from config import (
 
 # Set to True to print subquery/activity debug info to stdout
 DEBUG_PRINT_SUBQUERIES = True
+
+logger = logging.getLogger("app")
 
 
 def get_kb_client() -> KnowledgeBaseRetrievalClient:
@@ -162,7 +166,72 @@ def _print_subqueries(result: Any) -> None:
     print("========================================\n")
 
 
+def _log_model_metrics(result: Any, duration_ms: float, source_count: int, query: str) -> None:
+    """Log cost/latency metrics for the knowledge base retrieval call (query pipeline)."""
+    activities = getattr(result, "activity", None) or []
+
+    subquery_count = 0
+    planning = None
+    synthesis = None
+    reasoning_tokens = None
+
+    for act in activities:
+        a = _to_dict(act)
+        t = a.get("type")
+
+        if t == "searchIndex":
+            subquery_count += 1
+        elif t == "modelQueryPlanning":
+            planning = a
+        elif t == "modelAnswerSynthesis":
+            synthesis = a
+        elif t == "agenticReasoning":
+            reasoning_tokens = a.get("reasoningTokens")
+
+    planning_in = planning.get("inputTokens") if planning else 0
+    planning_out = planning.get("outputTokens") if planning else 0
+    synthesis_in = synthesis.get("inputTokens") if synthesis else 0
+    synthesis_out = synthesis.get("outputTokens") if synthesis else 0
+    total_tokens = (planning_in or 0) + (planning_out or 0) + (synthesis_in or 0) + (synthesis_out or 0) + (reasoning_tokens or 0)
+
+    readable_message = (
+        f"query: {query} | duration: {duration_ms}ms | tokens: {total_tokens} "
+        f"(planning {planning_in}in/{planning_out}out, synthesis {synthesis_in}in/{synthesis_out}out, "
+        f"reasoning {reasoning_tokens}) | sources: {source_count} | subqueries: {subquery_count}"
+    )
+
+    logger.info(
+        readable_message,
+        extra={
+            "pipeline": "query",
+            "stage": "knowledge_retrieve",
+            "knowledge_base": KNOWLEDGE_BASE_NAME,
+            "query": query,
+            "duration_ms": duration_ms,
+            "source_count": source_count,
+            "subquery_count": subquery_count,
+            "planning_input_tokens": planning_in,
+            "planning_output_tokens": planning_out,
+            "synthesis_input_tokens": synthesis_in,
+            "synthesis_output_tokens": synthesis_out,
+            "reasoning_tokens": reasoning_tokens,
+            "total_tokens": total_tokens,
+        },
+    )
+
+
 def retrieve_answer(query: str) -> dict:
+    logger.info(
+        f"query: {query} | status: started",
+        extra={
+            "pipeline": "query",
+            "stage": "knowledge_retrieve",
+            "knowledge_base": KNOWLEDGE_BASE_NAME,
+            "query": query,
+        },
+    )
+    start = time.time()
+
     client = get_kb_client()
 
     request = KnowledgeBaseRetrievalRequest(
@@ -180,7 +249,15 @@ def retrieve_answer(query: str) -> dict:
         output_mode="answerSynthesis",
     )
 
-    result = client.retrieve(retrieval_request=request)
+    try:
+        result = client.retrieve(retrieval_request=request)
+    except Exception:
+        logger.error(
+            f"query: {query} | status: failed",
+            extra={"pipeline": "query", "stage": "knowledge_retrieve", "knowledge_base": KNOWLEDGE_BASE_NAME, "query": query},
+            exc_info=True,
+        )
+        raise
 
     if DEBUG_PRINT_SUBQUERIES:
         _print_subqueries(result)
@@ -193,6 +270,15 @@ def retrieve_answer(query: str) -> dict:
     sources = _extract_sources(result)
     clean_answer = _strip_ref_ids(content.text)
     final_answer = clean_answer + _format_reference_block(sources)
+
+    duration_ms = round((time.time() - start) * 1000, 2)
+    _log_model_metrics(result, duration_ms, len(sources), query)
+
+    if not sources:
+        logger.warning(
+            f"query: {query} | status: no_sources_found",
+            extra={"pipeline": "query", "stage": "knowledge_retrieve", "knowledge_base": KNOWLEDGE_BASE_NAME, "query": query},
+        )
 
     return {
         "answer": final_answer,

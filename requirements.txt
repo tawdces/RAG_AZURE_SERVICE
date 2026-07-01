@@ -4,6 +4,7 @@ python-dotenv
 
 azure-search-documents==12.1.0b1
 azure-storage-blob
+azure-monitor-opentelemetry
 
 httpx
 
